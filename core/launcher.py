@@ -4,6 +4,7 @@
 from __future__ import print_function, unicode_literals, absolute_import
 
 import sys, os, subprocess
+import distutils.spawn
 
 from .lnp import lnp
 from . import hacks, paths
@@ -13,36 +14,60 @@ def toggle_autoclose():
     lnp.userconfig['autoClose'] = not lnp.userconfig.get_bool('autoClose')
     lnp.userconfig.save_data()
 
-def run_df(force=False):
-    """Launches Dwarf Fortress."""
-    result = None
+
+def get_df_executable():
+    base_path = paths.get('df')
+    spawn_terminal = False
     if sys.platform == 'win32':
-        if ('legacy' in lnp.df_info.variations and
-                lnp.df_info.version <= '0.31.14'):
+        if 'legacy' in lnp.df_info.variations and lnp.df_info.version <= '0.31.14':
             df_filename = 'dwarfort.exe'
         else:
             df_filename = 'Dwarf Fortress.exe'
-        result = run_program(
-            os.path.join(paths.get('df'), df_filename), force, True)
     elif sys.platform == 'darwin' and lnp.df_info.version <= '0.28.181.40d':
-        run_program(
-            os.path.join(paths.get('df'), 'Dwarf Fortress.app'), force, True)
+        df_filename = 'Dwarf Fortress.app'
     else:
         # Linux/OSX: Run DFHack if available and enabled
-        if (os.path.isfile(os.path.join(paths.get('df'), 'dfhack')) and
-                hacks.is_dfhack_enabled()):
-            result = run_program(
-                os.path.join(paths.get('df'), 'dfhack'), force, True, True)
-            if result == False:
-                raise Exception('Failed to launch a new terminal.')
+        if os.path.isfile(os.path.join(base_path, 'dfhack')) and hacks.is_dfhack_enabled():
+            df_filename = 'dfhack'
+            spawn_terminal = True
         else:
-            result = run_program(os.path.join(paths.get('df'), 'df'))
+            df_filename = 'df'
+
+    return df_filename, spawn_terminal
+
+
+def run_df(force=False):
+    """Launches Dwarf Fortress."""
+    df_filename, spawn_terminal = get_df_executable()
+    base_path = paths.get('df')
+
+    executable = os.path.join(base_path, df_filename)
+    result = run_program(executable, force, True, spawn_terminal)
+    if (force and not result) or result is False:
+        raise Exception('Failed to run Dwarf Fortress.')
+
+    util_path = paths.get('utilities')
     for prog in lnp.autorun:
-        if os.access(os.path.join(paths.get('utilities'), prog), os.F_OK):
-            run_program(os.path.join(paths.get('utilities'), prog))
+        utilility = os.path.join(util_path, prog)
+        if os.access(utilility, os.F_OK):
+            run_program(utilility)
+
     if lnp.userconfig.get_bool('autoClose'):
         sys.exit()
     return result
+
+
+def get_terminal_launcher():
+    if sys.platform == 'darwin':
+        return ['open', '-a', 'Terminal.app']
+    elif sys.platform.startswith('linux'):
+        #prefer distribution provided terminal launchers
+        for script in ['x-terminal-emulator', 'xdg-terminal']:
+            path = distutils.spawn.find_executable(script)
+            if path and os.access(path, os.F_OK):
+                return [path]
+        return [os.path.join(sys._MEIPASS, 'xdg-terminal')]
+    raise Exception('No terminal launcher for platform: ' + sys.platform)
 
 def run_program(path, force=False, is_df=False, spawn_terminal=False):
     """
@@ -55,44 +80,39 @@ def run_program(path, force=False, is_df=False, spawn_terminal=False):
             Whether or not to spawn a new terminal for this app.
             Used only for DFHack.
     """
+    path = os.path.abspath(path)
+    check_nonchild = (spawn_terminal and sys.platform.startswith('linux')) \
+                     or sys.platform == 'darwin' \
+                     or path.endswith('.app')
+
+    is_running = program_is_running(path, check_nonchild)
+    if not force and is_running:
+        lnp.ui.on_program_running(path, is_df)
+        return None
+
     try:
-        path = os.path.abspath(path)
         workdir = os.path.dirname(path)
         run_args = path
-        nonchild = False
         if spawn_terminal:
-            if sys.platform.startswith('linux'):
-                script = 'xdg-terminal'
-                if lnp.bundle == "linux":
-                    script = os.path.join(sys._MEIPASS, script)
-                if force or check_program_not_running(path, True):
-                    retcode = subprocess.call(
-                        [os.path.abspath(script), path],
-                        cwd=os.path.dirname(path))
-                    return retcode == 0
-                lnp.ui.on_program_running(path, is_df)
-                return None
-            elif sys.platform == 'darwin':
-                nonchild = True
-                run_args = ['open', '-a', 'Terminal.app', path]
+            term = get_terminal_launcher()
+            term.append(path)
+            retcode = subprocess.call(term, cwd=workdir)
+            return retcode == 0
         elif path.endswith('.jar'):  # Explicitly launch JAR files with Java
             run_args = ['java', '-jar', os.path.basename(path)]
         elif path.endswith('.app'):  # OS X application bundle
-            nonchild = True
             run_args = ['open', path]
             workdir = path
-        if force or check_program_not_running(path, nonchild):
-            lnp.running[path] = subprocess.Popen(run_args, cwd=workdir)
-            return True
-        lnp.ui.on_program_running(path, is_df)
-        return None
+
+        lnp.running[path] = subprocess.Popen(run_args, cwd=workdir)
+        return True
     except OSError:
         sys.excepthook(*sys.exc_info())
         return False
 
-def check_program_not_running(path, nonchild=False):
+def program_is_running(path, nonchild=False):
     """
-    Returns True if a program is not currently running.
+    Returns True if a program is currently running.
 
     Params:
         path
@@ -103,16 +123,16 @@ def check_program_not_running(path, nonchild=False):
             DFHack on Linux and OS X; currently unsupported for Windows.
     """
     if nonchild:
-        ps = subprocess.Popen('ps axww', shell=True, stdout=subprocess.PIPE)
+        ps = subprocess.Popen(['ps', 'axww'], stdout=subprocess.PIPE)
         s = ps.stdout.read()
         ps.wait()
-        return path not in s
+        return path in s
     else:
         if path not in lnp.running:
-            return True
+            return False
         else:
             lnp.running[path].poll()
-            return lnp.running[path].returncode is not None
+            return lnp.running[path].returncode is None
 
 def open_folder_idx(i):
     """Opens the folder specified by index i, as listed in PyLNP.json."""
