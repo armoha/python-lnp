@@ -1,0 +1,8 @@
+syntax: glob
+build
+dist
+*.pyc
+.*
+PyLNP.user
+stderr.txt
+stdout.txt
