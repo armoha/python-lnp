@@ -39,11 +39,12 @@ class PyLNP(object):
         else:
             os.chdir(os.path.join(os.path.dirname(__file__), '..'))
         self.detect_basedir()
-        errorlog.start()
 
         from . import df, paths, update, utilities
 
         paths.register('root', self.BASEDIR)
+        errorlog.start()
+
         paths.register('lnp', self.BASEDIR, 'LNP')
         if not os.path.isdir(paths.get('lnp')):
             print('WARNING: LNP folder is missing!', file=sys.stderr)
@@ -88,12 +89,21 @@ class PyLNP(object):
         prev_path = '.'
 
         from . import df
-        while os.path.abspath(self.BASEDIR) != prev_path:
-            df.find_df_folders()
-            if len(self.folders) != 0:
-                break
-            prev_path = os.path.abspath(self.BASEDIR)
-            self.BASEDIR = os.path.join(self.BASEDIR, '..')
+        try:
+            while os.path.abspath(self.BASEDIR) != prev_path:
+                df.find_df_folders()
+                if len(self.folders) != 0:
+                    break
+                prev_path = os.path.abspath(self.BASEDIR)
+                self.BASEDIR = os.path.join(self.BASEDIR, '..')
+        except UnicodeDecodeError:
+            print(
+                "ERROR: PyLNP is being stored in a path containing non-ASCII "
+                "characters, and cannot continue. Folder names may only use "
+                "the characters A-Z, 0-9, and basic punctuation.\n"
+                "Alternatively, you may run PyLNP from source using Python 3.",
+                file=sys.stderr)
+            sys.exit(1)
 
 
 # vim:expandtab
