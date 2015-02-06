@@ -42,7 +42,8 @@ class OptionsTab(Tab):
 
         grid = GridLayouter(2)
         grid.add(controls.create_trigger_option_button(
-            options, 'Population Cap', 'Maximum population in your fort',
+            options, 'Population Cap', 'Maximum population in your fort. '
+            'Setting this too low may disable certain gameplay features.',
             self.set_pop_cap, 'popcap'))
         grid.add(controls.create_trigger_option_button(
             options, 'Child Cap', 'Maximum children in your fort',
@@ -104,6 +105,8 @@ class OptionsTab(Tab):
                 self.read_keybinds, self.save_keybinds,
                 lambda: self.delete_keybinds(self.keybinding_files))
         keybindings.pack(side=BOTTOM, fill=BOTH, expand=Y)
+        self.keybinding_files.bind(
+            "<Double-1>", lambda e: self.load_keybinds(self.keybinding_files))
 
         if lnp.df_info.version >= '0.28.181.40a':
             embarkframe, self.embark_files, _ = \
@@ -168,9 +171,9 @@ class OptionsTab(Tab):
         current = keybinds.get_installed_file()
         for i, f in enumerate(files):
             if f == current:
-                self.keybinding_files.itemconfig(i, fg='red')
+                self.keybinding_files.itemconfig(i, bg='pale green')
             else:
-                self.keybinding_files.itemconfig(i, fg='black')
+                self.keybinding_files.itemconfig(i, bg='white')
 
     def load_keybinds(self, listbox):
         """
@@ -220,9 +223,9 @@ class OptionsTab(Tab):
         current = embarks.get_installed_files()
         for i, f in enumerate(files):
             if f in current:
-                self.embark_files.itemconfig(i, fg='red')
+                self.embark_files.itemconfig(i, bg='pale green')
             else:
-                self.embark_files.itemconfig(i, fg='black')
+                self.embark_files.itemconfig(i, bg='white')
 
     def install_embarks(self, listbox):
         """

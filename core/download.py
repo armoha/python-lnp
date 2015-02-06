@@ -148,7 +148,7 @@ class DownloadQueue(object):
             if not os.path.isdir(dirname):
                 os.makedirs(dirname)
             outhandle, outpath = tempfile.mkstemp(dir=dirname)
-            outfile = os.fdopen(outhandle, 'w')
+            outfile = os.fdopen(outhandle, 'wb')
             try:
                 req = Request(url, headers={'User-Agent':'PyLNP/'+VERSION})
                 response = urlopen(req, timeout=5)
@@ -157,8 +157,7 @@ class DownloadQueue(object):
                     chunk = response.read(8192)
                     if not chunk:
                         break
-                    total = response.info().getheader(
-                        'Content-Length')
+                    total = response.info().get('Content-Length')
                     data += len(chunk)
                     outfile.write(chunk)
                     self.__process_callbacks(self.on_progress, url, data, total)
