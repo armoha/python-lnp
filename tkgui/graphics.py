@@ -17,13 +17,11 @@ if sys.version_info[0] == 3:  # Alternate import names
     from tkinter import *
     from tkinter.ttk import *
     import tkinter.messagebox as messagebox
-    import tkinter.simpledialog as simpledialog
 else:
     # pylint:disable=import-error
     from Tkinter import *
     from ttk import *
     import tkMessageBox as messagebox
-    import tkSimpleDialog as simpledialog
 
 #pylint: disable=too-many-public-methods
 class GraphicsTab(Tab):
@@ -59,8 +57,8 @@ class GraphicsTab(Tab):
             listframe, None, self.graphics, height=8)
         self.graphicpacks.bind(
             '<<ListboxSelect>>', lambda e: self.select_graphics())
-        self.graphicpacks.bind(
-            "<Double-1>", lambda e: self.install_graphics())
+        for seq in ("<Double-1>", "<Return>"):
+            self.graphicpacks.bind(seq, lambda e: self.install_graphics())
 
         grid.add(controls.create_trigger_button(
             change_graphics, 'Install Graphics',
@@ -113,16 +111,16 @@ class GraphicsTab(Tab):
         tempframe = Frame(customize)
         _, self.fonts = controls.create_file_list(
             tempframe, 'FONT', self.tilesets, height=8)
-        self.fonts.bind(
-            "<Double-1>", lambda e: self.install_tilesets(1))
+        for seq in ("<Double-1>", "<Return>"):
+            self.fonts.bind(seq, lambda e: self.install_tilesets(1))
         if lnp.settings.version_has_option('GRAPHICS_FONT'):
             grid.add(tempframe, pady=4)
             tempframe = Frame(customize)
             grid.add(tempframe, pady=4)
             _, self.graphicsfonts = controls.create_file_list(
                 tempframe, 'GRAPHICS_FONT', self.tilesets, height=8)
-            self.graphicsfonts.bind(
-                "<Double-1>", lambda e: self.install_tilesets(2))
+            for seq in ("<Double-1>", "<Return>"):
+                self.graphicsfonts.bind(seq, lambda e: self.install_tilesets(2))
         else:
             grid.add(tempframe, 2, pady=4)
 
@@ -153,21 +151,24 @@ class GraphicsTab(Tab):
             advanced, 'Open Tilesets Folder',
             'Add your own tilesets here!', graphics.open_tilesets), 2)
 
-        colorframe, self.color_files, buttons = \
-            controls.create_file_list_buttons(
-                self, 'Color schemes', self.colors, self.load_colors,
-                self.read_colors, self.save_colors, self.delete_colors)
-        colorframe.pack(side=BOTTOM, fill=BOTH, expand=Y, anchor="s")
-        buttons.grid(rowspan=3)
+        colorframe, self.color_entry, self.color_files = \
+            controls.create_list_with_entry(
+                self, "Color schemes", self.colors,
+                [("Load", "Load color scheme", self.load_colors),
+                 ("Save", "Save current color scheme", self.save_colors),
+                 ("Delete", "Delete color scheme", self.delete_colors),
+                 ("Refresh", "Refresh list", self.read_colors)],
+                entry_default="Save current color scheme as...")
+        colorframe.pack(side=BOTTOM, fill=BOTH, expand=N)
         self.color_files.bind(
-            '<<ListboxSelect>>', lambda e: self.select_colors())
-        self.color_files.bind(
-            "<Double-1>", lambda e: self.load_colors())
+            "<<ListboxSelect>>", lambda e: self.select_colors())
+        for seq in ("<Double-1>", "<Return>"):
+            self.color_files.bind(seq, lambda e: self.load_colors())
 
         self.color_preview = Canvas(
             colorframe, width=128, height=32, highlightthickness=0,
             takefocus=False)
-        self.color_preview.grid(column=0, row=2)
+        self.color_preview.grid(column=0, row=0, columnspan=2, pady=(0, 4))
 
         display = controls.create_control_group(self, 'Display Options', True)
         display.pack(side=TOP, fill=BOTH, expand=N)
@@ -202,6 +203,7 @@ class GraphicsTab(Tab):
             if not TkGui.check_vanilla_raws():
                 return
             gfx_dir = self.graphicpacks.get(self.graphicpacks.curselection()[0])
+            result = None
             if messagebox.askokcancel(
                     message='Your graphics, settings and raws will be changed.',
                     title='Are you sure?'):
@@ -236,6 +238,8 @@ class GraphicsTab(Tab):
                         message='Nothing was installed.\n'
                         'Folder does not exist or does not have required files '
                         'or folders:\n'+str(gfx_dir))
+            if result:
+                self.graphicpacks.selection_clear(self.graphicpacks.curselection())
             binding.update()
             self.read_data()
 
@@ -293,19 +297,21 @@ class GraphicsTab(Tab):
 
     def load_colors(self):
         """Replaces color scheme with the selected file."""
-        if len(self.color_files.curselection()) != 0:
-            colors.load_colors(self.color_files.get(
-                self.color_files.curselection()[0]))
+        items = self.color_files.curselection()
+        if len(items) > 0:
+            self.color_files.selection_clear(items)
+            colors.load_colors(self.color_files.get(items[0]))
             self.read_colors()
+            self.color_entry.delete(0, END)
 
     def save_colors(self):
         """Saves color scheme to a file."""
-        v = simpledialog.askstring(
-            "Save Color scheme", "Save current color scheme as:")
-        if v is not None:
+        v = self.color_entry.get()
+        if v:
             if (not colors.color_exists(v) or messagebox.askyesno(
                     message='Overwrite {0}?'.format(v),
                     icon='question', title='Overwrite file?')):
+                self.color_entry.delete(0, END)
                 colors.save_colors(v)
                 self.read_colors()
 
@@ -392,9 +398,12 @@ class GraphicsTab(Tab):
         graphicsfont = None
         if len(self.fonts.curselection()) != 0 and (mode & 1):
             font = self.fonts.get(self.fonts.curselection()[0])
+            self.fonts.selection_clear(self.fonts.curselection())
         if len(self.graphicsfonts.curselection()) != 0 and (mode & 2):
             graphicsfont = self.graphicsfonts.get(
                 self.graphicsfonts.curselection()[0])
+            self.graphicsfonts.selection_clear(
+                self.graphicsfonts.curselection())
         graphics.install_tilesets(font, graphicsfont)
         binding.update()
         self.read_data()

@@ -5,6 +5,7 @@
 from __future__ import print_function, unicode_literals, absolute_import
 
 import sys
+import types
 
 from . import binding
 
@@ -13,11 +14,13 @@ if sys.version_info[0] == 3:  # Alternate import names
     from tkinter import *
     from tkinter.ttk import *
     import tkinter.simpledialog as simpledialog
+    import tkinter.font as tkFont
 else:
     # pylint:disable=import-error
     from Tkinter import *
     from ttk import *
     import tkSimpleDialog as simpledialog
+    import tkFont
 
 # Monkeypatch simpledialog to use themed dialogs from ttk
 if sys.platform != 'darwin':  # OS X looks better without patch
@@ -272,6 +275,43 @@ def create_scrollbar(parent, control, **gridargs):
     s.grid_remove()
     return s
 
+def listbox_identify(listbox, y):
+    """Returns the index of the listbox item at the supplied (relative) y
+    coordinate"""
+    item = listbox.nearest(y)
+    if (listbox.bbox(item)[1] + listbox.bbox(item)[3]) > y:
+        return item
+    return None
+
+def treeview_tag_set(tree, tag, item, state=True, toggle=False):
+    """
+    Adds or removes a tag from the Treeview item's tags. Returns True if
+    tag is now set or False if it is not.
+
+    Params:
+        item
+            Treeview item id
+        state
+            True to set the tag; False to remove the tag.
+        toggle
+            If set to True, will toggle the tag. Overrides on.
+    """
+    # This is necessary because tag_add and tag_remove are not in the Python
+    # bindings for Tk, and this is more readable (and likely not any slower)
+    # than using arcane tk.call() syntax
+    tags = list(tree.item(item, 'tags'))
+    is_set = tag in tags
+    if toggle:
+        state = not is_set
+
+    if state and (not is_set):
+        tags.append(tag)
+    elif (not state) and is_set:
+        tags.remove(tag)
+
+    tree.item(item, tags=tags)
+    return state
+
 def create_file_list(parent, title, listvar, **args):
     """
         Creates a file list with a scrollbar. Returns a tuple
@@ -296,6 +336,7 @@ def create_file_list(parent, title, listvar, **args):
     lb = Listbox(
         lf, listvariable=listvar, activestyle='dotbox', exportselection=0,
         **args)
+    lb.identify = types.MethodType(listbox_identify, lb)
     lb.grid(column=0, row=0, rowspan=2, sticky="nsew")
     create_scrollbar(lf, lb, column=1, row=0, rowspan=2)
     return (lf, lb)
@@ -371,6 +412,82 @@ def create_file_list_buttons(
     delete.pack(side=TOP)
     return (lf, lb, buttons)
 
+def add_default_to_entry(entry, default_text):
+    """Adds bindings to entry such that when there is no user text in the
+    entry, the entry will display default_text in grey and italics."""
+    normal_font = tkFont.Font(font='TkDefaultFont')
+    default_font = tkFont.Font(font='TkDefaultFont')
+    default_font.config(slant=tkFont.ITALIC)
+    entry.default_showing = True
+
+    def focus_out(_): # pylint:disable=missing-docstring
+        if len(entry.get()) == 0:
+            entry.insert(0, default_text)
+            entry.configure(font=default_font, foreground='grey')
+            entry.default_showing = True
+
+    def focus_in(_): # pylint:disable=missing-docstring
+        if entry.default_showing:
+            entry.delete(0, END)
+            entry.configure(font=normal_font, foreground='black')
+            entry.default_showing = False
+
+    entry.bind('<FocusIn>', focus_in)
+    entry.bind('<FocusOut>', focus_out)
+
+    focus_out(0)
+
+def create_list_with_entry(parent, title, listvar, buttonspec, **kwargs):
+    """
+    Creates a control group with a listbox, a text entry, and any number of
+    buttons specified with buttonspec. Does not lay out the control group in
+    its parent.
+    Returns a tuple (frame, entry, lsitbox)
+
+    Params:
+        parent
+            The parent control for the list.
+        title
+            The title for the frame.
+        listvar
+            The Variable containing the list items.
+        buttonspec
+            A list of tuples (title, tooltip, function) specifying the buttons
+    """
+    entry_default = kwargs.pop('entry_default', None)
+    if 'height' not in kwargs:
+        kwargs['height'] = 4
+
+    kf = create_control_group(parent, title)
+    kf.configure(pad=(2, 0, 2, 2))
+    kf.columnconfigure(0, weight=1)
+    kf.rowconfigure(2, weight=1)
+
+    ke = Entry(kf) # text box
+    ke.grid(row=1, column=0, sticky='ewn', pady=(1, 4))
+
+    lf = Frame(kf) # Listbox and scrollbar
+    kb = Listbox(lf, listvariable=listvar, activestyle='dotbox',
+                 exportselection=0, **kwargs)
+    lf.configure(borderwidth=kb['borderwidth'], relief=kb['relief'])
+    kb.configure(borderwidth=0, relief='flat')
+    kb.grid(row=0, column=0, sticky='nsew')
+    create_scrollbar(lf, kb, row=0, column=1)
+    lf.rowconfigure(0, weight=1)
+    lf.columnconfigure(0, weight=1)
+    lf.grid(row=2, column=0, rowspan=1, sticky='nsew')
+
+    bf = Frame(kf) # buttons
+    for i, bn in enumerate(buttonspec):
+        pad = 0 if i == 0 else (5, 0)
+        create_trigger_button(bf, *bn).grid(row=i, pady=pad)
+    bf.grid(column=1, row=1, rowspan=2, sticky='ns', padx=(4, 0))
+
+    if entry_default:
+        add_default_to_entry(ke, entry_default)
+
+    return (kf, ke, kb)
+
 def create_toggle_list(parent, columns, framegridopts, listopts={}):
     """
     Creates and returns a two-column Treeview in a frame to show toggleable
@@ -392,6 +509,7 @@ def create_toggle_list(parent, columns, framegridopts, listopts={}):
     Grid.rowconfigure(lf, 0, weight=1)
     Grid.columnconfigure(lf, 0, weight=1)
     lst = Treeview(lf, columns=columns, show=['headings'], **listopts)
+    lst.tag_set = types.MethodType(treeview_tag_set, lst)
     lst.grid(column=0, row=0, sticky="nsew")
     create_scrollbar(lf, lst, column=1, row=0)
     return lst

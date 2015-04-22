@@ -99,23 +99,39 @@ class OptionsTab(Tab):
             'in them (Infinite sources of underground water, but may flood '
             'your fort', 'aquifers').grid(column=0, row=0, sticky="nsew")
 
-        keybindings, self.keybinding_files, _ = \
-            controls.create_file_list_buttons(
-                self, 'Key Bindings', self.keybinds,
-                lambda: self.load_keybinds(self.keybinding_files),
-                self.read_keybinds, self.save_keybinds,
-                lambda: self.delete_keybinds(self.keybinding_files))
-        keybindings.pack(side=BOTTOM, fill=BOTH, expand=Y)
-        self.keybinding_files.bind(
-            "<Double-1>", lambda e: self.load_keybinds(self.keybinding_files))
+        keybindings, self.keybinding_entry, self.keybinding_files = \
+            controls.create_list_with_entry(
+                self, "Key Bindings", self.keybinds,
+                [("Load", "Load keybindings", self.load_keybinds),
+                 ("Save", "Save current keybindings", self.save_keybinds),
+                 ("Delete", "Delete keybindings", self.delete_keybinds),
+                 ("Refresh", "Refresh list", self.read_keybinds)],
+                entry_default="Save current keybindings as...")
+        keybindings.pack(side=BOTTOM, fill=BOTH, expand=N)
+        for seq in ("<Double-1>", "<Return>"):
+            self.keybinding_files.bind(seq, lambda e: self.load_keybinds())
 
         if lnp.df_info.version >= '0.28.181.40a':
-            embarkframe, self.embark_files, _ = \
-                controls.create_readonly_file_list_buttons(
-                    self, 'Embark profiles', self.embarks,
-                    lambda: self.install_embarks(self.embark_files),
-                    self.read_embarks, selectmode='multiple')
-            embarkframe.pack(side=BOTTOM, fill=BOTH, expand=Y)
+            embarkframe, self.embark_files = \
+                controls.create_file_list(self, 'Embark profiles', self.embarks)
+            self.embark_files.configure(selectmode="single")
+
+            refresh = controls.create_trigger_button(
+                embarkframe, 'Refresh Profiles', 'Refresh list of profiles',
+                self.read_embarks)
+            refresh.grid(column=0, row=3, columnspan=2, sticky="sew")
+
+            # This hack ensures the listbox never selects anything itself. This
+            # is much better than the alternative hack required to prevent the
+            # list selecting the last element when clicking in empty space.
+            def deselect_all(event):
+                for item in event.widget.curselection():
+                    event.widget.selection_clear(item)
+            self.embark_files.bind("<<ListboxSelect>>", deselect_all)
+
+            for seq in ("<space>", "<Return>", "<1>",
+                        "<2>" if sys.platform == 'darwin' else "<3>"):
+                self.embark_files.bind(seq, self.toggle_embark)
 
     @staticmethod
     def set_pop_cap():
@@ -176,46 +192,39 @@ class OptionsTab(Tab):
             else:
                 self.keybinding_files.itemconfig(i, bg='white')
 
-    def load_keybinds(self, listbox):
-        """
-        Replaces keybindings with selected file.
-
-        Params:
-            listbox
-                Listbox containing the list of keybinding files.
-        """
-        if len(listbox.curselection()) != 0:
-            keybinds.load_keybinds(listbox.get(listbox.curselection()[0]))
+    def load_keybinds(self):
+        """Replaces keybindings with selected file."""
+        listbox = self.keybinding_files
+        items = listbox.curselection()
+        if len(items) > 0:
+            listbox.selection_clear(items)
+            keybinds.load_keybinds(listbox.get(items[0]))
             self.read_keybinds()
+            self.keybinding_entry.delete(0, END)
 
     def save_keybinds(self):
         """Saves keybindings to a file."""
-        v = simpledialog.askstring(
-            "Save Keybindings", "Save current keybindings as:")
-        if v is not None:
+        v = self.keybinding_entry.get()
+        if v:
             if not v.endswith('.txt'):
                 v = v + '.txt'
             if (not keybinds.keybind_exists(v) or messagebox.askyesno(
                     message='Overwrite {0}?'.format(v),
                     icon='question', title='Overwrite file?')):
+                self.keybinding_entry.delete(0, END)
                 keybinds.save_keybinds(v)
                 self.read_keybinds()
 
-    def delete_keybinds(self, listbox):
-        """
-        Deletes a keybinding file.
-
-        Params:
-            listbox
-                Listbox containing the list of keybinding files.
-        """
-        if len(listbox.curselection()) != 0:
+    def delete_keybinds(self):
+        """Deletes a keybinding file."""
+        listbox = self.keybinding_files
+        if len(listbox.curselection()) > 0:
             filename = listbox.get(listbox.curselection()[0])
             if messagebox.askyesno(
                     'Delete file?',
                     'Are you sure you want to delete {0}?'.format(filename)):
                 keybinds.delete_keybinds(filename)
-            self.read_keybinds()
+                self.read_keybinds()
 
     def read_embarks(self):
         """Reads list of embark profiles."""
@@ -240,5 +249,21 @@ class OptionsTab(Tab):
             files = []
             for f in listbox.curselection():
                 files.append(listbox.get(f))
+            embarks.install_embarks(files)
+            self.read_embarks()
+
+    def toggle_embark(self, event):
+        """Toggles selected embark profile."""
+        item = self.embark_files.index('active')
+        if event.keysym == '??':
+            item = self.embark_files.identify(event.y)
+
+        if item is not None:
+            embark_file = self.embark_files.get(item)
+            files = embarks.get_installed_files()
+            if embark_file in files:
+                files.remove(embark_file)
+            else:
+                files.append(embark_file)
             embarks.install_embarks(files)
             self.read_embarks()
