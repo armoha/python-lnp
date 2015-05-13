@@ -6,6 +6,7 @@ from __future__ import print_function, unicode_literals, absolute_import
 
 from . import controls, binding
 from .layout import GridLayouter
+from .preview import GraphicsPreview
 from .tab import Tab
 import sys
 
@@ -30,6 +31,7 @@ class GraphicsTab(Tab):
         self.graphics = Variable()
         self.colors = Variable()
         self.tilesets = Variable()
+        self.preview = GraphicsPreview(self)
 
     def read_data(self):
         self.read_graphics()
@@ -57,6 +59,11 @@ class GraphicsTab(Tab):
 
         self._create_tilesets_group(customize_tab).pack(fill=BOTH, expand=Y)
         self._create_cs_group(customize_tab).pack(fill=BOTH, expand=N)
+
+        controls.create_trigger_button(
+            self, 'Open Preview', 'Opens a preview showing an example game '
+            'screen using the selected settings.',
+            self.preview.top.deiconify).pack(fill=X, expand=N)
 
     def _create_cg_group(self, parent, show_title=True):
         title = 'Change Graphics' if show_title else None
@@ -124,12 +131,19 @@ class GraphicsTab(Tab):
             customize, 'FONT', self.tilesets)
         for seq in ("<Double-1>", "<Return>"):
             self.fonts.bind(seq, lambda e: self.install_tilesets(1))
+        self.fonts.bind(
+            '<<ListboxSelect>>', lambda e: self.preview.use_font(
+                self.fonts.get(self.fonts.curselection()[0])))
 
         if lnp.settings.version_has_option('GRAPHICS_FONT'):
             _, self.graphicsfonts = controls.create_file_list(
                 customize, 'GRAPHICS_FONT', self.tilesets)
             for seq in ("<Double-1>", "<Return>"):
                 self.graphicsfonts.bind(seq, lambda e: self.install_tilesets(2))
+            self.graphicsfonts.bind(
+                '<<ListboxSelect>>', lambda e: self.preview.use_graphics_font(
+                    self.graphicsfonts.get(
+                        self.graphicsfonts.curselection()[0])))
 
         buttons = controls.create_control_group(customize, None, True)
         buttons.pack(fill=X)
@@ -339,6 +353,8 @@ class GraphicsTab(Tab):
             else:
                 colorscheme = paths.get('graphics', pack, 'data', 'init',
                                         'init.txt')
+            self.preview.use_colors(colorscheme, False)
+            self.preview.use_pack(paths.get('graphics', pack))
         self.paint_color_preview(colorscheme)
 
     def select_colors(self):
@@ -347,6 +363,7 @@ class GraphicsTab(Tab):
         if len(self.color_files.curselection()) != 0:
             colorscheme = self.color_files.get(
                 self.color_files.curselection()[0])
+        self.preview.use_colors(colorscheme)
         self.paint_color_preview(colorscheme)
 
     def paint_color_preview(self, colorscheme):
