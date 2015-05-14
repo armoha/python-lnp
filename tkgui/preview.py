@@ -65,10 +65,10 @@ class GraphicsPreview(ChildWindow):
         w = ord(f.read(1))
         h = ord(f.read(1))
         tiles = []
-        for _ in xrange(0, h):
+        for _ in range(0, h):
             row = []
             tiles.append(row)
-            for _ in xrange(0, w):
+            for _ in range(0, w):
                 tile = ord(f.read(1))
                 fg = ord(f.read(1))
                 bg = ord(f.read(1))
@@ -164,8 +164,8 @@ class GraphicsPreview(ChildWindow):
         if tileset.mode == 'RGB':
             tileset = tileset.convert("RGBA")
             pixels = tileset.load()
-            for y in xrange(tileset.size[1]):
-                for x in xrange(tileset.size[0]):
+            for y in range(tileset.size[1]):
+                for x in range(tileset.size[0]):
                     if pixels[x, y] == (255, 0, 255, 255):
                         pixels[x, y] = (0, 0, 0, 0)
         else:
