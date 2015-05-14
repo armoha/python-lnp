@@ -323,3 +323,22 @@ def install_tilesets(font, graphicsfont):
                 paths.get('data', 'art', graphicsfont))):
         df.set_option('GRAPHICS_FONT', graphicsfont)
         df.set_option('GRAPHICS_FULLFONT', graphicsfont)
+
+def get_tileset_from_path(path, tileset):
+    """Returns the path to <tileset> in <path>, the tilesets folder, or the
+    baseline folder, depending on which is found first. If vanilla files are not
+    present, it will use current data/art folder instead.
+
+    Returns None if none of the above are found."""
+    art_path = os.path.join(path, 'data', 'art', tileset)
+    tileset_path = paths.get('tilesets', tileset)
+    vanilla = baselines.find_vanilla(False)
+    if vanilla:
+        baseline_path = os.path.join(vanilla, 'data', 'art', tileset)
+    else:
+        baseline_path = paths.get('data', 'art', tileset)
+    for f in (art_path, tileset_path, baseline_path):
+        log.d("checking for %s", f)
+        if os.path.exists(f):
+            return f
+    return None

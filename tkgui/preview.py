@@ -8,7 +8,7 @@ from __future__ import (
 import sys, os
 
 from .child_windows import ChildWindow
-from core import paths, colors, log, dfraw
+from core import paths, colors, log, dfraw, graphics
 from core.lnp import lnp
 #pylint:disable=redefined-builtin
 from io import open
@@ -129,11 +129,11 @@ class GraphicsPreview(ChildWindow):
         self.path = path
         init_raw = dfraw.DFRaw(os.path.join(path, 'data', 'init', 'init.txt'))
         font = init_raw.get_value('FONT')
-        self.font = self.load_tileset(os.path.join(path, 'data', 'art', font))
+        self.font = self.load_tileset(graphics.get_tileset_from_path(path, font))
         if lnp.settings.version_has_option('GRAPHICS_FONT'):
             gfx_font = init_raw.get_value('GRAPHICS_FONT')
-            self.gfx_font = self.load_tileset(os.path.join(
-                path, 'data', 'art', gfx_font))
+            self.gfx_font = self.load_tileset(graphics.get_tileset_from_path(
+                path, gfx_font))
         else:
             self.gfx_font = font
         self.draw()
@@ -149,12 +149,14 @@ class GraphicsPreview(ChildWindow):
         self.draw()
 
     def use_colors(self, colorscheme, redraw=True):
+        """Loads a colorscheme named <colorscheme>."""
         self.colorscheme = colorscheme
         if redraw:
             self.draw()
 
     @staticmethod
     def fix_tileset(tileset):
+        """Transforms tilesets to RGBA."""
         log.d('Tileset mode is ' + tileset.mode)
         if tileset.mode == 'P':
             #tile_data = [255 if a != 0 else 0 for a in tileset.getdata()]
