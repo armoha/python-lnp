@@ -44,6 +44,7 @@ class GraphicsPreview(ChildWindow):
     def __init__(self, parent):
         self.colorscheme = None
         super(GraphicsPreview, self).__init__(parent, 'Graphics preview')
+        self.top.resizable(0, 0)
         self.top.withdraw()
         self.top.protocol('WM_DELETE_WINDOW', self.top.withdraw)
         self.use_pack(paths.get('df'))
@@ -198,7 +199,6 @@ class GraphicsPreview(ChildWindow):
         start = time()
         image = self.make_image()
         self.preview.image = ImageTk.PhotoImage(image)
-        self.top.resizable(0, 0)
         self.top.geometry('{}x{}'.format(*image.size))
         self.preview.create_image(0, 0, image=self.preview.image, anchor=NW)
         end = time()
