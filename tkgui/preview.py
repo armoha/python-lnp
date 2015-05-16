@@ -7,11 +7,14 @@ from __future__ import (
 
 import sys, os
 
+from struct import Struct
+
 from .child_windows import ChildWindow
 from core import paths, colors, log, dfraw, graphics
 from core.lnp import lnp
 #pylint:disable=redefined-builtin
 from io import open
+from collections import namedtuple
 
 if sys.version_info[0] == 3:  # Alternate import names
     # pylint:disable=import-error
@@ -39,6 +42,15 @@ except ImportError:  # Some PIL installations live outside of the PIL package
 
 has_PNG = has_PIL or (TkVersion >= 8.6)  # Tk 8.6 supports PNG natively
 
+Header = namedtuple('Header', ['w', 'h'])
+Cell = namedtuple('Cell', ['char', 'fg', 'bg'])
+header_fmt = Struct(str('<BB'))
+cell_fmt = Struct(str('<BBB'))
+
+def unpack(strct, source):
+    """Reads data using a Struct <strct> from <source>."""
+    return strct.unpack(source.read(strct.size))
+
 class GraphicsPreview(ChildWindow):
     """Graphics preview window."""
     def __init__(self, parent):
@@ -47,6 +59,7 @@ class GraphicsPreview(ChildWindow):
         self.top.resizable(0, 0)
         self.top.withdraw()
         self.top.protocol('WM_DELETE_WINDOW', self.top.withdraw)
+        self.header, self.tiles = self.load_screenshot()
         self.use_pack(paths.get('df'))
 
     def create_controls(self, container):
@@ -63,25 +76,21 @@ class GraphicsPreview(ChildWindow):
     def load_screenshot():
         """Loads screenshot data from a binary file."""
         f = open('screenshot.bin', 'rb')
-        w = ord(f.read(1))
-        h = ord(f.read(1))
+        #pylint:disable=protected-access
+        header = Header._make(unpack(header_fmt, f))
         tiles = []
-        for _ in range(0, h):
+        for _ in range(0, header.h):
             row = []
+            for _ in range(0, header.w):
+                row.append(Cell._make(unpack(cell_fmt, f)))
             tiles.append(row)
-            for _ in range(0, w):
-                tile = ord(f.read(1))
-                fg = ord(f.read(1))
-                bg = ord(f.read(1))
-                row.append([tile, fg, bg])
         f.close()
-        return w, h, tiles
+        return header, tiles
 
-    @staticmethod
-    def load_tileset(path):
+    def load_tileset(self, path):
         """Loads the tileset."""
         # pylint:disable=maybe-no-member
-        return Image.open(path)
+        return self.fix_tileset(Image.open(path))
 
     @staticmethod
     def make_tile(tileset, char, fg, bg):
@@ -129,7 +138,8 @@ class GraphicsPreview(ChildWindow):
         self.path = path
         init_raw = dfraw.DFRaw(os.path.join(path, 'data', 'init', 'init.txt'))
         font = init_raw.get_value('FONT')
-        self.font = self.load_tileset(graphics.get_tileset_from_path(path, font))
+        self.font = self.load_tileset(graphics.get_tileset_from_path(
+            path, font))
         if lnp.settings.version_has_option('GRAPHICS_FONT'):
             gfx_font = init_raw.get_value('GRAPHICS_FONT')
             self.gfx_font = self.load_tileset(graphics.get_tileset_from_path(
@@ -179,17 +189,16 @@ class GraphicsPreview(ChildWindow):
         """Create the preview image object."""
         # pylint:disable=maybe-no-member
         c = colors.get_colors(self.colorscheme)
-        w, h, tiles = self.load_screenshot()
-        self.font = self.fix_tileset(self.font)
-        self.gfx_font = self.fix_tileset(self.gfx_font)
+        self.header, self.tiles = self.load_screenshot()
         #TODO: TWBT
         tileset = (self.gfx_font if self.get_draw_mode() == 'GFXFONT' else
                    self.font)
         tile_x, tile_y = tuple(int(n/16) for n in tileset.size)
-        preview = Image.new('RGBA', (tile_x * w, tile_y * h), None)
-        for y, row in enumerate(tiles):
+        preview = Image.new('RGBA', (
+            tile_x * self.header.w, tile_y * self.header.h), None)
+        for y, row in enumerate(self.tiles):
             for x, cell in enumerate(row):
-                char, fg, bg = cell
+                char, fg, bg = cell.char, cell.fg, cell.bg
                 tile = self.make_tile(tileset, char, c[fg], c[bg])
                 pos = (x * tile_x, y * tile_y)
                 preview.paste(tile, pos)
