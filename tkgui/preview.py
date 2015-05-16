@@ -168,13 +168,7 @@ class GraphicsPreview(ChildWindow):
     def fix_tileset(tileset):
         """Transforms tilesets to RGBA."""
         log.d('Tileset mode is ' + tileset.mode)
-        if tileset.mode == 'P':
-            #tile_data = [255 if a != 0 else 0 for a in tileset.getdata()]
-            #mask = Image.new("L", tileset.size) #pylint:disable=maybe-no-member
-            #mask.putdata(tile_data)
-            tileset = tileset.convert("RGB")
-            #tileset.putalpha(mask)
-        if tileset.mode == 'RGB':
+        if tileset.mode in ('P', 'RGB'):
             tileset = tileset.convert("RGBA")
             pixels = tileset.load()
             for y in range(tileset.size[1]):
