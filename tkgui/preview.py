@@ -44,8 +44,11 @@ has_PNG = has_PIL or (TkVersion >= 8.6)  # Tk 8.6 supports PNG natively
 
 Header = namedtuple('Header', ['w', 'h'])
 Cell = namedtuple('Cell', ['char', 'fg', 'bg'])
+TWBT_region = namedtuple('TWBT_region', ['x1', 'y1', 'x2', 'y2'])
+Screen = namedtuple('Screen', ['header', 'tiles', 'twbt_region'])
 header_fmt = Struct(str('<BB'))
 cell_fmt = Struct(str('<BBB'))
+TWBT_fmt = Struct(str('<BBBB'))
 
 def unpack(strct, source):
     """Reads data using a Struct <strct> from <source>."""
@@ -55,11 +58,11 @@ class GraphicsPreview(ChildWindow):
     """Graphics preview window."""
     def __init__(self, parent):
         self.colorscheme = None
+        self.load_screenshot()
         super(GraphicsPreview, self).__init__(parent, 'Graphics preview')
         self.top.resizable(0, 0)
         self.top.withdraw()
         self.top.protocol('WM_DELETE_WINDOW', self.top.withdraw)
-        self.header, self.tiles = self.load_screenshot()
         self.use_pack(paths.get('df'))
 
     def create_controls(self, container):
@@ -72,8 +75,7 @@ class GraphicsPreview(ChildWindow):
             container, highlightthickness=0, takefocus=False, bg='black')
         self.preview.pack(fill=BOTH, expand=Y)
 
-    @staticmethod
-    def load_screenshot():
+    def load_screenshot(self):
         """Loads screenshot data from a binary file."""
         f = open('screenshot.bin', 'rb')
         #pylint:disable=protected-access,no-member
@@ -84,8 +86,9 @@ class GraphicsPreview(ChildWindow):
             for _ in range(0, header.w):
                 row.append(Cell._make(unpack(cell_fmt, f)))
             tiles.append(row)
+        twbt_region = TWBT_region._make(unpack(TWBT_fmt, f))
         f.close()
-        return header, tiles
+        self.screen = Screen._make([header, tiles, twbt_region])
 
     def load_tileset(self, path):
         """Loads the tileset."""
@@ -150,30 +153,40 @@ class GraphicsPreview(ChildWindow):
             tileset = tileset.convert("RGBA")
         return tileset
 
-    def make_image(self):
-        """Create the preview image object."""
-        # pylint:disable=maybe-no-member,too-many-locals
+    def make_image(self, _region=None):
+        """Create the preview image object. If provided, _region"""
+        # pylint:disable=maybe-no-member,too-many-locals,no-member
         c = colors.get_colors(self.colorscheme)
+        screen = self.screen
         #TODO: TWBT
-        tileset = (self.gfx_font if self.get_draw_mode() == 'GFXFONT' else
-                   self.font)
+        draw_mode = self.get_draw_mode()
+        tileset = (
+            self.gfx_font if (_region or draw_mode == 'GFXFONT') else self.font)
         tile_x, tile_y = tuple(int(n/16) for n in tileset.size)
-        img_size = (tile_x * self.header.w, tile_y * self.header.h)
-        bg = Image.new('RGBA', img_size, None)
-        tiles = Image.new('RGBA', img_size, None)
-        fg = Image.new('RGBA', img_size, None)
+        img_size = (tile_x * screen.header.w, tile_y * screen.header.h)
+        bg = Image.new('RGBA', img_size, (0, 0, 0, 255))
+        tiles = Image.new('RGBA', img_size, (0, 0, 0, 255))
+        fg = Image.new('RGBA', img_size, (0, 0, 0, 255))
 
         def tile_pos(char):
             """Calculates the pixel position of a tile in a tileset."""
             y, x = divmod(char, 16)
             return pos_in_pixels(x, y)
 
-        def pos_in_pixels(x, y):
+        def pos_in_pixels(x1, y1, x2=-1, y2=-1):
             """Convert tile coordinates (x,y) to pixel coordinates."""
-            return (x * tile_x, y * tile_y, (x+1) * tile_x, (y+1) * tile_y)
+            if x2 == -1:
+                x2 = x1 + 1
+            if y2 == -1:
+                y2 = y1 + 1
+            return (x1 * tile_x, y1 * tile_y, x2 * tile_x, y2 * tile_y)
 
-        for y, row in enumerate(self.tiles):
+        for y, row in enumerate(screen.tiles):
             for x, cell in enumerate(row):
+                if _region and not (
+                        _region.x1 <= x <= _region.x2 and
+                        _region.y1 <= y <= _region.y2):
+                    continue
                 pos = pos_in_pixels(x, y)
                 tiles.paste(tileset.crop(tile_pos(cell.char)), pos)
                 fg.paste(c[cell.fg], pos)
@@ -181,6 +194,10 @@ class GraphicsPreview(ChildWindow):
 
         tiles = ImageChops.multiply(tiles, fg)
         bg.paste(tiles, mask=tiles)
+        if draw_mode == 'TWBT' and not _region:
+            twbt_img = self.make_image(screen.twbt_region)
+            pos = pos_in_pixels(*tuple(screen.twbt_region))
+            bg.paste(twbt_img.crop(pos), pos)
         return bg
 
     def draw(self):
