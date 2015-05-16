@@ -4,7 +4,7 @@
 """Handles control binding for the TKinter GUI."""
 from __future__ import print_function, unicode_literals, absolute_import
 
-import sys
+import sys, collections
 
 if sys.version_info[0] == 3:  # Alternate import names
     # pylint:disable=import-error
@@ -28,7 +28,9 @@ def init(lnp):
     __controls.clear()
 
 def bind(control, option, update_func=None):
-    """Binds a control to an option."""
+    """Binds an object <control> to an option. <control> may be a Tkinter
+    control or a callable object which will receive the current value as a
+    parameter."""
 
     if option not in __controls:
         __controls[option] = []
@@ -73,6 +75,8 @@ def update():
             if isinstance(control, Entry):
                 control.delete(0, END)
                 control.insert(0, value)
+            elif isinstance(entry, collections.Callable):
+                entry(value)
             else:
                 control["text"] = (
                     control["text"].split(':')[0] + ': ' +

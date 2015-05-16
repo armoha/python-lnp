@@ -55,15 +55,17 @@ def unpack(strct, source):
     return strct.unpack(source.read(strct.size))
 
 class GraphicsPreview(ChildWindow):
+    #pylint:disable=too-many-instance-attributes
     """Graphics preview window."""
     def __init__(self, parent):
-        self.colorscheme = None
-        self.load_screenshot()
+        self.print_mode=''
+        self.graphics = False
         super(GraphicsPreview, self).__init__(parent, 'Graphics preview')
         self.top.resizable(0, 0)
         self.top.withdraw()
         self.top.protocol('WM_DELETE_WINDOW', self.top.withdraw)
-        self.use_pack(paths.get('df'))
+        self.load_screenshot()
+        self.use_pack(paths.get('df'), None)
 
     def create_controls(self, container):
         if not has_PIL:
@@ -97,45 +99,66 @@ class GraphicsPreview(ChildWindow):
 
     def get_draw_mode(self):
         """Returns a string identifying how to draw the preview."""
-        init_raw = dfraw.DFRaw(os.path.join(
-            self.path, 'data', 'init', 'init.txt'))
-        if str(init_raw.get_value('PRINT_MODE')).startswith('TWBT'):
+        if self.print_mode.startswith('TWBT'):
             return 'TWBT'
-        gfx = init_raw.get_value('GRAPHICS')
-        if gfx == 'YES':
+        if self.graphics:
             return 'GFXFONT'
         else:
             return 'FONT'
 
-    def use_pack(self, path):
-        """Loads tilesets from a pack located at <path>."""
+    def use_pack(self, path, colorscheme):
+        """Loads tilesets from a pack located at <path>, with colorscheme at
+        path <colorscheme>."""
         self.path = path
+        self.colorscheme = colorscheme
         init_raw = dfraw.DFRaw(os.path.join(path, 'data', 'init', 'init.txt'))
         font = init_raw.get_value('FONT')
-        self.font = self.load_tileset(graphics.get_tileset_from_path(
-            path, font))
+        self.font_name = graphics.get_tileset_from_path(path, font)
+        self.font = self.load_tileset(self.font_name)
         if lnp.settings.version_has_option('GRAPHICS_FONT'):
             gfx_font = init_raw.get_value('GRAPHICS_FONT')
-            self.gfx_font = self.load_tileset(graphics.get_tileset_from_path(
-                path, gfx_font))
+            self.gfx_font_name = graphics.get_tileset_from_path(path, gfx_font)
+            self.gfx_font = self.load_tileset(self.gfx_font_name)
         else:
             self.gfx_font = font
         self.draw()
 
     def use_font(self, tileset):
         """Loads FONT tileset from tileset named <tileset>."""
-        self.font = self.load_tileset(paths.get('data', 'art', tileset))
+        new_path = paths.get('data', 'art', tileset)
+        if new_path == self.font_name:
+            return
+        self.font_name = new_path
+        self.font = self.load_tileset(self.font_name)
         self.draw()
 
     def use_graphics_font(self, tileset):
         """Loads GRAPHICS_FONT tileset from tileset named <tileset>."""
-        self.gfx_font = self.load_tileset(paths.get('data', 'art', tileset))
+        new_path = paths.get('data', 'art', tileset)
+        if new_path == self.gfx_font_name:
+            return
+        self.gfx_font_name = new_path
+        self.gfx_font = self.load_tileset(self.gfx_font_name)
         self.draw()
 
-    def use_colors(self, colorscheme, redraw=True):
+    def use_colors(self, colorscheme):
         """Loads a colorscheme named <colorscheme>."""
+        if self.colorscheme == colorscheme:
+            return
         self.colorscheme = colorscheme
-        if redraw:
+        self.draw()
+
+    def use_print_mode(self, print_mode):
+        """Sets the print mode to <print_mode>."""
+        old_draw_mode = self.get_draw_mode()
+        self.print_mode = print_mode
+        if old_draw_mode != self.get_draw_mode():
+            self.draw()
+
+    def change_graphics_option(self, value):
+        new_val = value == 'YES'
+        if new_val != self.graphics:
+            self.graphics = new_val
             self.draw()
 
     @staticmethod
@@ -158,7 +181,6 @@ class GraphicsPreview(ChildWindow):
         # pylint:disable=maybe-no-member,too-many-locals,no-member
         c = colors.get_colors(self.colorscheme)
         screen = self.screen
-        #TODO: TWBT
         draw_mode = self.get_draw_mode()
         tileset = (
             self.gfx_font if (_region or draw_mode == 'GFXFONT') else self.font)

@@ -121,6 +121,8 @@ class GraphicsTab(Tab):
             '(saves space, useful for re-packaging)',
             self.simplify_graphics))
 
+        binding.bind(self.preview.use_print_mode, 'printmode')
+        binding.bind(self.preview.change_graphics_option, 'GRAPHICS')
         return advanced
 
     def _create_tilesets_group(self, parent, show_title=True):
@@ -353,8 +355,7 @@ class GraphicsTab(Tab):
             else:
                 colorscheme = paths.get('graphics', pack, 'data', 'init',
                                         'init.txt')
-            self.preview.use_colors(colorscheme, False)
-            self.preview.use_pack(paths.get('graphics', pack))
+            self.preview.use_pack(paths.get('graphics', pack), colorscheme)
         self.paint_color_preview(colorscheme)
 
     def select_colors(self):
