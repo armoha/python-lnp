@@ -76,7 +76,7 @@ class GraphicsPreview(ChildWindow):
     def load_screenshot():
         """Loads screenshot data from a binary file."""
         f = open('screenshot.bin', 'rb')
-        #pylint:disable=protected-access
+        #pylint:disable=protected-access,no-member
         header = Header._make(unpack(header_fmt, f))
         tiles = []
         for _ in range(0, header.h):
@@ -92,34 +92,6 @@ class GraphicsPreview(ChildWindow):
         # pylint:disable=maybe-no-member
         return self.fix_tileset(Image.open(path))
 
-    @staticmethod
-    def make_tile(tileset, char, fg, bg):
-        """Returns an image objectof the tile, colored.
-
-        Arguments:
-            tileset:
-                the Image object of the tileset to use
-            ord_int:
-                the ord integer of the character to use
-            fg_c:
-                a RGB color tuple for the tile foreground
-            bg_c:
-                a RGB color tuple for the tile background
-
-        Returns:
-            Image object of the tile
-        """
-        tile_x, tile_y = tuple(int(n/16) for n in tileset.size)
-        x = tile_x * (char % 16)
-        y = tile_y * (char // 16)
-        tile = tileset.crop((x, y, x + tile_x, y + tile_y)).copy()
-        tile_copy = tile.copy()
-        tile.paste(bg, None)
-        fg_tile = Image.new("RGBA", tile.size, fg) #pylint:disable=maybe-no-member
-        tile_copy = ImageChops.multiply(tile_copy, fg_tile)
-        tile.paste(tile_copy, None, tile_copy)
-        return tile.convert("RGB")
-
     def get_draw_mode(self):
         """Returns a string identifying how to draw the preview."""
         init_raw = dfraw.DFRaw(os.path.join(
@@ -127,7 +99,6 @@ class GraphicsPreview(ChildWindow):
         if str(init_raw.get_value('PRINT_MODE')).startswith('TWBT'):
             return 'TWBT'
         gfx = init_raw.get_value('GRAPHICS')
-        log.d(gfx)
         if gfx == 'YES':
             return 'GFXFONT'
         else:
@@ -181,22 +152,36 @@ class GraphicsPreview(ChildWindow):
 
     def make_image(self):
         """Create the preview image object."""
-        # pylint:disable=maybe-no-member
+        # pylint:disable=maybe-no-member,too-many-locals
         c = colors.get_colors(self.colorscheme)
-        self.header, self.tiles = self.load_screenshot()
         #TODO: TWBT
         tileset = (self.gfx_font if self.get_draw_mode() == 'GFXFONT' else
                    self.font)
         tile_x, tile_y = tuple(int(n/16) for n in tileset.size)
-        preview = Image.new('RGBA', (
-            tile_x * self.header.w, tile_y * self.header.h), None)
+        img_size = (tile_x * self.header.w, tile_y * self.header.h)
+        bg = Image.new('RGBA', img_size, None)
+        tiles = Image.new('RGBA', img_size, None)
+        fg = Image.new('RGBA', img_size, None)
+
+        def tile_pos(char):
+            """Calculates the pixel position of a tile in a tileset."""
+            y, x = divmod(char, 16)
+            return pos_in_pixels(x, y)
+
+        def pos_in_pixels(x, y):
+            """Convert tile coordinates (x,y) to pixel coordinates."""
+            return (x * tile_x, y * tile_y, (x+1) * tile_x, (y+1) * tile_y)
+
         for y, row in enumerate(self.tiles):
             for x, cell in enumerate(row):
-                char, fg, bg = cell.char, cell.fg, cell.bg
-                tile = self.make_tile(tileset, char, c[fg], c[bg])
-                pos = (x * tile_x, y * tile_y)
-                preview.paste(tile, pos)
-        return preview
+                pos = pos_in_pixels(x, y)
+                tiles.paste(tileset.crop(tile_pos(cell.char)), pos)
+                fg.paste(c[cell.fg], pos)
+                bg.paste(c[cell.bg], pos)
+
+        tiles = ImageChops.multiply(tiles, fg)
+        bg.paste(tiles, mask=tiles)
+        return bg
 
     def draw(self):
         """Draw a preview image."""
