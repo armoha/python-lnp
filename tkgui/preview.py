@@ -58,7 +58,7 @@ class GraphicsPreview(ChildWindow):
     #pylint:disable=too-many-instance-attributes
     """Graphics preview window."""
     def __init__(self, parent):
-        self.print_mode=''
+        self.print_mode = ''
         self.graphics = False
         super(GraphicsPreview, self).__init__(parent, 'Graphics preview')
         self.top.resizable(0, 0)
@@ -90,7 +90,7 @@ class GraphicsPreview(ChildWindow):
             tiles.append(row)
         twbt_region = TWBT_region._make(unpack(TWBT_fmt, f))
         f.close()
-        self.screen = Screen._make([header, tiles, twbt_region])
+        self.screen = Screen(header, tiles, twbt_region)
 
     def load_tileset(self, path):
         """Loads the tileset."""
@@ -156,6 +156,7 @@ class GraphicsPreview(ChildWindow):
             self.draw()
 
     def change_graphics_option(self, value):
+        """Callback when the GRAPHICS option is changed."""
         new_val = value == 'YES'
         if new_val != self.graphics:
             self.graphics = new_val
@@ -218,7 +219,7 @@ class GraphicsPreview(ChildWindow):
         bg.paste(tiles, mask=tiles)
         if draw_mode == 'TWBT' and not _region:
             twbt_img = self.make_image(screen.twbt_region)
-            pos = pos_in_pixels(*tuple(screen.twbt_region))
+            pos = pos_in_pixels(*screen.twbt_region)
             bg.paste(twbt_img.crop(pos), pos)
         return bg
 
