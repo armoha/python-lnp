@@ -95,6 +95,8 @@ class GraphicsPreview(ChildWindow):
     def load_tileset(self, path):
         """Loads the tileset."""
         # pylint:disable=maybe-no-member
+        if not has_PIL:
+            return None
         return self.fix_tileset(Image.open(path))
 
     def get_draw_mode(self):
@@ -225,6 +227,8 @@ class GraphicsPreview(ChildWindow):
 
     def draw(self):
         """Draw a preview image."""
+        if not has_PIL:
+            return
         from time import time
         start = time()
         image = self.make_image()
