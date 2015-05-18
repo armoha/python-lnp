@@ -102,7 +102,7 @@ class GraphicsPreview(ChildWindow):
     def get_draw_mode(self):
         """Returns a string identifying how to draw the preview."""
         if self.print_mode.startswith('TWBT'):
-            return 'TWBT'
+            return self.print_mode
         if self.graphics:
             return 'GFXFONT'
         else:
@@ -179,15 +179,26 @@ class GraphicsPreview(ChildWindow):
             tileset = tileset.convert("RGBA")
         return tileset
 
+    def get_texture_filter(self):
+        """Returns the PIL resampling filter matching DF's TEXTURE_PARAM."""
+        init_raw = dfraw.DFRaw(os.path.join(
+            self.path, 'data', 'init', 'init.txt'))
+        if init_raw.get_value('TEXTURE_PARAM') == 'LINEAR':
+            return Image.BILINEAR
+        return Image.NEAREST
+
     def make_image(self, _region=None):
         """Create the preview image object. If provided, _region"""
-        # pylint:disable=maybe-no-member,too-many-locals,no-member
+        # pylint:disable=maybe-no-member,too-many-locals,no-member,too-many-branches
         c = colors.get_colors(self.colorscheme)
         screen = self.screen
         draw_mode = self.get_draw_mode()
-        tileset = (
-            self.gfx_font if (_region or draw_mode == 'GFXFONT') else self.font)
+        if _region or draw_mode == 'GFXFONT':
+            tileset = self.gfx_font
+        else:
+            tileset = self.font
         tile_x, tile_y = tuple(int(n/16) for n in tileset.size)
+        gfx_tile_x, gfx_tile_y = tuple(int(n/16) for n in self.gfx_font.size)
         img_size = (tile_x * screen.header.w, tile_y * screen.header.h)
         bg = Image.new('RGBA', img_size, (0, 0, 0, 255))
         tiles = Image.new('RGBA', img_size, (0, 0, 0, 255))
@@ -198,13 +209,17 @@ class GraphicsPreview(ChildWindow):
             y, x = divmod(char, 16)
             return pos_in_pixels(x, y)
 
-        def pos_in_pixels(x1, y1, x2=-1, y2=-1):
+        def pos_in_pixels(x1, y1, x2=-1, y2=-1, gfx=False):
             """Convert tile coordinates (x,y) to pixel coordinates."""
             if x2 == -1:
                 x2 = x1 + 1
             if y2 == -1:
                 y2 = y1 + 1
-            return (x1 * tile_x, y1 * tile_y, x2 * tile_x, y2 * tile_y)
+            if gfx:
+                tx, ty = gfx_tile_x, gfx_tile_y
+            else:
+                tx, ty = tile_x, tile_y
+            return (x1 * tx, y1 * ty, x2 * tx, y2 * ty)
 
         for y, row in enumerate(screen.tiles):
             for x, cell in enumerate(row):
@@ -213,16 +228,33 @@ class GraphicsPreview(ChildWindow):
                         _region.y1 <= y <= _region.y2):
                     continue
                 pos = pos_in_pixels(x, y)
-                tiles.paste(tileset.crop(tile_pos(cell.char)), pos)
+                tile = tileset.crop(tile_pos(cell.char))
+                # The below code can be used to get entirely correct rendering,
+                # but it takes way too long, so we make an approximation later.
+                # if draw_mode == 'TWBT_LEGACY':
+                #    tile = tile.resize(
+                #        (gfx_tile_x, gfx_tile_y), self.get_texture_filter())
+                #    pos = pos_in_pixels(x, y, graphics=True)
+                tiles.paste(tile, pos)
                 fg.paste(c[cell.fg], pos)
                 bg.paste(c[cell.bg], pos)
 
         tiles = ImageChops.multiply(tiles, fg)
         bg.paste(tiles, mask=tiles)
-        if draw_mode == 'TWBT' and not _region:
+        if draw_mode.startswith('TWBT') and not _region:
             twbt_img = self.make_image(screen.twbt_region)
-            pos = pos_in_pixels(*screen.twbt_region)
-            bg.paste(twbt_img.crop(pos), pos)
+            # To approximate TWBT_LEGACY rendering, FONT needs to be rescaled
+            # to the same size as GRAPHICS_FONT. We can't afford to do that
+            # with the individual tiles, so we approximate by rendering at
+            # normal size and then scaling up at the end.
+            if draw_mode == 'TWBT_LEGACY':
+                bg = bg.resize(twbt_img.size, self.get_texture_filter())
+            dest_pos = pos_in_pixels(
+                *screen.twbt_region, gfx=(draw_mode == 'TWBT_LEGACY'))
+            src_pos = list(pos_in_pixels(*screen.twbt_region, gfx=True))
+            src_pos[2] = src_pos[0]+(dest_pos[2]-dest_pos[0])
+            src_pos[3] = src_pos[1]+(dest_pos[3]-dest_pos[1])
+            bg.paste(twbt_img.crop(src_pos), dest_pos)
         return bg
 
     def draw(self):
