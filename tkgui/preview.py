@@ -224,8 +224,8 @@ class GraphicsPreview(ChildWindow):
         for y, row in enumerate(screen.tiles):
             for x, cell in enumerate(row):
                 if _region and not (
-                        _region.x1 <= x <= _region.x2 and
-                        _region.y1 <= y <= _region.y2):
+                        _region.x1 <= x < _region.x2 and
+                        _region.y1 <= y < _region.y2):
                     continue
                 pos = pos_in_pixels(x, y)
                 tile = tileset.crop(tile_pos(cell.char))
