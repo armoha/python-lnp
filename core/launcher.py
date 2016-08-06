@@ -8,18 +8,8 @@ import os
 import subprocess
 import copy
 
-from .helpers import get_resource
 from .lnp import lnp
-from . import hacks, paths, log
-
-def get_configured_terminal():
-    """Retrieves the configured terminal command."""
-    return lnp.userconfig.get_string('terminal')
-
-def configure_terminal(new_path):
-    """Configures the command used to launch a terminal on Linux."""
-    lnp.userconfig['terminal'] = new_path
-    lnp.userconfig.save_data()
+from . import hacks, paths, log, terminal
 
 def toggle_autoclose():
     """Toggle automatic closing of the UI when launching DF."""
@@ -72,17 +62,6 @@ def run_df(force=False):
         sys.exit()
     return result
 
-def get_terminal_launcher():
-    """Returns a command prefix to launch a program in a new terminal."""
-    if sys.platform == 'darwin':
-        return ['open', '-a', 'Terminal.app']
-    elif sys.platform.startswith('linux'):
-        override = get_configured_terminal()
-        if override:
-            return override.split(' ')
-        return [get_resource('xdg-terminal')]
-    raise Exception('No terminal launcher for platform: ' + sys.platform)
-
 def run_program(path, force=False, is_df=False, spawn_terminal=False):
     """
     Launches an external program.
@@ -110,13 +89,7 @@ def run_program(path, force=False, is_df=False, spawn_terminal=False):
         # pylint:disable=redefined-variable-type
         run_args = path
         if spawn_terminal and not sys.platform.startswith('win'):
-            term = get_terminal_launcher()
-            if "$" in term:
-                cmd = [path if x == '$' else x for x in term]
-            else:
-                cmd = term + [path]
-            retcode = subprocess.call(cmd, cwd=workdir)
-            return retcode == 0
+            run_args = terminal.get_terminal_command(path)
         elif path.endswith('.jar'):  # Explicitly launch JAR files with Java
             run_args = ['java', '-jar', os.path.basename(path)]
         elif path.endswith('.app'):  # OS X application bundle
@@ -208,3 +181,5 @@ def open_file(path):
             log.e('Unknown platform, cannot open file')
     except:
         log.e('Could not open file ' + path)
+
+

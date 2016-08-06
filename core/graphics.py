@@ -100,6 +100,14 @@ def install_graphics(pack):
                     shutil.copy2(item, paths.get('data', 'art'))
                 else:
                     shutil.copytree(item, paths.get('data', 'art'))
+        # ensure that mouse.png and font.ttf exist (required by DF)
+        base = baselines.find_vanilla()
+        if base:
+            for item in ('mouse.png', 'font.ttf'):
+                cur = paths.get('data', 'art', item)
+                bas = os.path.join(base, 'data', 'art', item)
+                if not os.path.isfile(cur) and os.path.isfile(bas):
+                    shutil.copy2(bas, cur)
         # Handle init files
         patch_inits(paths.get('graphics', pack))
         # Install colorscheme
@@ -160,7 +168,7 @@ def patch_inits(gfx_dir):
         'WOUND_COLOR_NONE', 'WOUND_COLOR_MINOR',
         'WOUND_COLOR_INHIBITED', 'WOUND_COLOR_FUNCTION_LOSS',
         'WOUND_COLOR_BROKEN', 'WOUND_COLOR_MISSING', 'SKY', 'CHASM',
-        'PILLAR_TILE',
+        'PILLAR_TILE', 'VARIED_GROUND_TILES', 'ENGRAVINGS_START_OBSCURED',
         # Tracks
         'TRACK_N', 'TRACK_S', 'TRACK_E', 'TRACK_W', 'TRACK_NS',
         'TRACK_NE', 'TRACK_NW', 'TRACK_SE', 'TRACK_SW', 'TRACK_EW',
@@ -215,7 +223,8 @@ def patch_inits(gfx_dir):
         'TREE_TRUNK_INTERIOR', 'TREE_TRUNK_INTERIOR_DEAD']
     init_fields = [
         'FONT', 'FULLFONT', 'GRAPHICS', 'GRAPHICS_FONT',
-        'GRAPHICS_FULLFONT', 'TRUETYPE', 'PRINT_MODE']
+        'GRAPHICS_FULLFONT', 'TRUETYPE', 'PRINT_MODE',
+        'GRAPHICS_BLACK_SPACE', 'TEXTURE_PARAM', 'MOUSE_PICTURE']
     init_fields = [f for f in init_fields if lnp.settings.version_has_option(f)]
     d_init_fields = [
         f for f in d_init_fields if lnp.settings.version_has_option(f)]
@@ -231,7 +240,7 @@ def patch_inits(gfx_dir):
 def simplify_graphics():
     """Removes unnecessary files from all graphics packs."""
     for pack in read_graphics():
-        simplify_pack(pack)
+        simplify_pack(pack[0])
 
 def simplify_pack(pack):
     """Removes unnecessary files from one graphics pack."""

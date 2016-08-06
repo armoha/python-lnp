@@ -51,7 +51,7 @@ except ImportError:  # Some PIL installations live outside of the PIL package
 
 from . import controls, binding
 from .child_windows import LogWindow, InitEditor, SelectDF, UpdateWindow
-from .child_windows import ConfirmRun
+from .child_windows import ConfirmRun, TerminalSelector
 
 from .options import OptionsTab
 from .graphics import GraphicsTab
@@ -63,7 +63,7 @@ from .mods import ModsTab
 from core.helpers import get_resource
 from core.lnp import lnp, VERSION
 from core import df, launcher, log, paths, update, mods, download, baselines
-from core import importer
+from core import terminal, importer
 
 has_PNG = has_PIL or (TkVersion >= 8.6)  # Tk 8.6 supports PNG natively
 
@@ -142,6 +142,15 @@ class TkGui(object):
         if not self.ensure_df():
             return
 
+        if lnp.os == 'linux' and not terminal.terminal_configured():
+            self.root.withdraw()
+            messagebox.showinfo(
+                'PyLNP',
+                'You need to configure a terminal to allow things like DFHack '
+                'to work correctly. Press OK to do this now.')
+            self.configure_terminal()
+            self.root.deiconify()
+
         root.option_add('*tearOff', FALSE)
         windowing = root.tk.call('tk', 'windowingsystem')
         if windowing == "win32":
@@ -190,8 +199,11 @@ class TkGui(object):
         play_button = controls.create_trigger_button(
             main, 'Play Dwarf Fortress!', 'Play the game!',
             launcher.run_df)
-        play_button.configure(style='Big.TButton')
-        play_button.pack(side=BOTTOM, fill=X, padx=(1, 3), pady=(0, 3))
+        if sys.platform != 'darwin':
+            play_button.configure(style='Big.TButton')
+            play_button.pack(side=BOTTOM, fill=X, padx=(1, 3), pady=(0, 3))
+        else:
+            play_button.pack(side=BOTTOM, fill=X, padx=(30, 30), pady=(0, 3))
 
         self.menubar = self.create_menu(root)
 
@@ -263,6 +275,25 @@ class TkGui(object):
             message='Some problems were found with your current '
             'configuration:\n\n' + '\n'.join(errors) + '\n\nRun DF anyway?',
             title='Invalid configuration', icon='warning', default='no')
+
+    def on_request_update_permission(self, interval):
+        """Asks the user if update checking should be performed."""
+        if interval == 0:
+            days = 'launch'
+        elif interval == 1:
+            days = 'day'
+        else:
+            days = str(interval)+' days'
+        result = messagebox.askyesno(
+            message='This pack can automatically check for updates. The author '
+            'of this pack suggests checking every '+days+'.\n\nAllow automatic '
+            'update checks? You can change this behavior at any time from '
+            'Options > Check for Updates.', title='Update checks',
+            icon='question', default='yes')
+        if result:
+            self.updateDays.set(interval)
+        else:
+            self.updateDays.set(-1)
 
     def create_tab(self, class_, caption):
         """
@@ -371,8 +402,8 @@ class TkGui(object):
             menu_options.add_cascade(
                 menu=menu_updates, label='Check for updates')
             options = [
-                "every launch", "every day", "every 3 days", "every 7 days",
-                "every 14 days", "every 30 days", "Never"]
+                "Every launch", "Every day", "Every 3 days", "Every 7 days",
+                "Every 14 days", "Every 30 days", "Never"]
             daylist = [0, 1, 3, 7, 14, 30, -1]
             self.updateDays.set(lnp.userconfig.get_number('updateDays'))
             for i, o in enumerate(options):
@@ -421,21 +452,9 @@ class TkGui(object):
         self.do_reload = True
         self.exit_program()
 
-    @staticmethod
-    def configure_terminal():
+    def configure_terminal(self):
         """Configures the command used to launch a terminal on Linux."""
-        v = simpledialog.askstring(
-            "Terminal", "When using DFHack, PyLNP must be able to spawn an "
-            "independent terminal.\nThis is normally done using a shell "
-            "script, xdg-terminal.\nIf this doesn't work for you, you can "
-            "provide an alternate command to do this here.\nUse $ as a "
-            "placeholder for the command to run inside the terminal; if "
-            "omitted, the command will simply be appended.\n"
-            "To use the default script, leave this blank.\n"
-            "See the PyLNP readme for more information.",
-            initialvalue=lnp.userconfig['terminal'])
-        if v is not None:
-            launcher.configure_terminal(v)
+        TerminalSelector(self.root)
 
     def configure_updates(self, days):
         """Sets the number of days until next update check."""
@@ -545,8 +564,8 @@ class TkGui(object):
         messagebox.showinfo(
             title='About', message="PyLNP "+VERSION +" - Lazy Newb Pack Python "
             "Edition\n\nPort by Pidgeot\nContributions by PeridexisErrant, "
-            "rx80, dricus, James Morgensen\n\nOriginal program: LucasUP, "
-            "TolyK/aTolyK")
+            "rx80, dricus, James Morgensen, jecowa\n\n"
+            "Original program: LucasUP, TolyK/aTolyK")
 
     @staticmethod
     def cycle_option(field):
